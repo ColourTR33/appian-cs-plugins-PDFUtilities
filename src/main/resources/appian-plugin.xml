@@ -1,10 +1,11 @@
-<appian-plugin name="COMPLETE_ME" key="COMPLETE_ME">
-
+<appian-plugin name="PDF Utilities" key="com.appiancs.plugins.pdfutilities">
   <plugin-info>
-    <description>COMPLETE_ME</description>
+    <description>PDF conversion utilities</description>
     <vendor name="Appian Corporation" url="https://www.appian.com" />
-    <version>1.0.0</version>
-    <application-version min="24.2" />
+    <version>1.0.5</version>
+    <application-version min="25.2" />
+    <resource-bundle base-name="com.appiancs.plugins.pdfutilities.HTMLConverter" />
   </plugin-info>
-
+  <smart-service name="HTML Converter" key="HTMLConverter" class="com.appiancs.plugins.pdfutilities.HTMLConverter">
+  </smart-service>
 </appian-plugin>
