@@ -225,11 +225,46 @@ public class HtmlToPdfConverter {
    * Downloads custom font documents from Appian.
    */
   private List<FontData> loadFontData() throws Exception {
-    // TODO: Implement font downloading logic here.
-    if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
-      LOG.info("Skipping custom font loading (not yet implemented).");
+    List<FontData> fontDataList = new ArrayList<>();
+
+    // Check if font documents are provided
+    if (request.fontDocuments == null || request.fontDocuments.isEmpty()) {
+      if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
+        LOG.info("No custom fonts specified, using default fonts.");
+      }
+      return fontDataList;
     }
-    return new ArrayList<>();
+
+    // Download each font document
+    for (Long fontDocId : request.fontDocuments) {
+      try {
+        com.appiancorp.suiteapi.knowledge.Document fontDoc = request.cs.download(
+          fontDocId,
+          ContentConstants.VERSION_CURRENT,
+          false
+        )[0];
+
+        File fontFile = fontDoc.accessAsReadOnlyFile();
+        String fontName = fontDoc.getName();
+
+        fontDataList.add(new FontData(fontName, fontFile));
+
+        if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
+          LOG.info("Successfully loaded custom font: " + fontName);
+        }
+      } catch (Exception e) {
+        if (LOG.isEnabledFor(org.apache.log4j.Level.WARN)) {
+          LOG.warn("Failed to load font document with ID: " + fontDocId, e);
+        }
+        // Continue loading other fonts even if one fails
+      }
+    }
+
+    if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
+      LOG.info("Loaded " + fontDataList.size() + " custom font(s).");
+    }
+
+    return fontDataList;
   }
 
   /**
