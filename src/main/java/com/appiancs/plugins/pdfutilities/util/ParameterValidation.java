@@ -33,7 +33,7 @@ public final class ParameterValidation {
 
   public static void checkIsPositive(Integer value, String paramName) {
     if (value == null || value <= 0) {
-      throw new IllegalArgumentException("Parameter '" + paramName + " must be a positive number.");
+      throw new IllegalArgumentException("Parameter '" + paramName + "' must be a positive number.");
     }
   }
 

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -46,10 +47,15 @@ public class HtmlToPdfConverter {
   /**
    * Orchestrates the entire HTML to PDF conversion process.
    */
-  public void executeConversion() {
+  public Long executeConversion() {
     File tempPdfFile = null;
+
     try {
       // Step 1: Prepare the HTML DOM (parsing, cleaning, styling)
+      tempPdfFile = File.createTempFile("temp_pdf_" + request.sourceDocument, ".pdf");
+      if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
+        LOG.info("Temporary PDF file created: " + tempPdfFile.getAbsolutePath());
+      }
       org.jsoup.nodes.Document preparedHtml = prepareHtmlDom();
 
       // Step 2: Load custom fonts (only if needed)
@@ -59,7 +65,7 @@ public class HtmlToPdfConverter {
       }
 
       // Step 3: Generate the PDF from the prepared HTML
-      tempPdfFile = generatePdf(preparedHtml, fontDataList);
+      generatePdf(preparedHtml, fontDataList, tempPdfFile);
 
       // Step 4: Post-process the PDF (e.g., add page numbers)
       addPageNumbers(tempPdfFile);
@@ -67,12 +73,16 @@ public class HtmlToPdfConverter {
       // Step 5: Upload the final PDF to Appian
       uploadPdfToAppian(tempPdfFile);
 
+      // Return the newly created document ID
+      return request.newDocumentCreated;
+
     } catch (Exception e) {
       throw new RuntimeException("Failed to convert HTML to PDF: " + e.getMessage(), e);
     } finally {
       // Step 6: Clean up temporary files
-      if (tempPdfFile != null) {
-        tempPdfFile.delete();
+      FileUtils.deleteQuietly(tempPdfFile);
+      if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
+        LOG.info("Temporary PDF file cleanup executed.");
       }
     }
   }
@@ -108,13 +118,15 @@ public class HtmlToPdfConverter {
   /**
    * Generates a PDF from a Jsoup document and returns a temporary File object.
    */
-  private File generatePdf(org.jsoup.nodes.Document jsoupDoc, List<FontData> fontDataList) throws Exception {
+  private void generatePdf(org.jsoup.nodes.Document jsoupDoc, List<FontData> fontDataList, File tempPdfFile) throws Exception {
     if (jsoupDoc == null) {
       throw new IllegalArgumentException("The input HTML document cannot be null.");
     }
+    if (tempPdfFile == null) {
+      throw new IllegalArgumentException("The output PDF file cannot be null.");
+    }
 
     XRLog.listRegisteredLoggers().forEach(logger -> XRLog.setLevel(logger, Level.WARNING));
-    File tempPdfFile = File.createTempFile("temp_pdf_" + request.sourceDocument, ".pdf");
 
     try (OutputStream outputStream = Files.newOutputStream(tempPdfFile.toPath())) {
       PdfRendererBuilder builder = new PdfRendererBuilder();
@@ -142,7 +154,6 @@ public class HtmlToPdfConverter {
     if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
       LOG.info("Temporary PDF file generated successfully.");
     }
-    return tempPdfFile;
   }
 
   private void addPageNumbers(File pdfFile) {
@@ -151,6 +162,11 @@ public class HtmlToPdfConverter {
       if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
         LOG.info("Skipping page number addition as it is not enabled.");
       }
+      return;
+    }
+
+    if (pdfFile == null || !pdfFile.exists()) {
+      LOG.error("Cannot add page numbers: PDF file is null or does not exist");
       return;
     }
 
@@ -323,8 +339,9 @@ public class HtmlToPdfConverter {
       return !uriReachableCache.get(urlString); // Return inverse of reachability
     }
     boolean isReachable = false;
+    HttpURLConnection connection = null;
     try {
-      HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
+      connection = (HttpURLConnection) new URL(urlString).openConnection();
       connection.setRequestMethod("HEAD");
       connection.setConnectTimeout(3000);
       connection.setReadTimeout(3000);
@@ -332,6 +349,10 @@ public class HtmlToPdfConverter {
     } catch (Exception e) {
       if (LOG.isEnabledFor(org.apache.log4j.Level.WARN)) {
         LOG.warn("Resource at URL is not reachable: " + urlString);
+      }
+    } finally {
+      if (connection != null) {
+        connection.disconnect();
       }
     }
     uriReachableCache.put(urlString, isReachable);

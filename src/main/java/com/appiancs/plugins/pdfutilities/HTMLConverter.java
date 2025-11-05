@@ -1,15 +1,11 @@
 package com.appiancs.plugins.pdfutilities;
 
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-
 import com.appiancorp.suiteapi.common.Name;
 import com.appiancorp.suiteapi.content.ContentService;
 import com.appiancorp.suiteapi.knowledge.Document;
 import com.appiancorp.suiteapi.knowledge.DocumentDataType;
 import com.appiancorp.suiteapi.knowledge.FolderDataType;
 import com.appiancorp.suiteapi.process.exceptions.SmartServiceException;
-import com.appiancorp.suiteapi.process.framework.AppianSmartService;
 import com.appiancorp.suiteapi.process.framework.Input;
 import com.appiancorp.suiteapi.process.framework.Order;
 import com.appiancorp.suiteapi.process.framework.Required;
@@ -21,36 +17,57 @@ import com.appiancs.plugins.pdfutilities.util.ParameterValidation;
 
 @AutomationSmartServicesDocumentGeneration
 @Unattended
-@Order({ "SourceDocument", "TargetDocumentName", "TargetDocumentDesc", "TargetFolder", "TargetDocumentWidth", "TargetDocumentHeight",
-  "TargetDocumentTopMargin", "TargetDocumentBottomMargin", "TargetDocumentLeftMargin", "TargetDocumentRightMargin", "SimplifyFonts",
-  "WrapText", "HandleWideTables", "HandleWideFooters" })
+@Order({
+  "SourceDocument",
+  "TargetDocumentName",
+  "TargetDocumentDesc",
+  "TargetFolder",
+  "TargetDocumentWidth",
+  "TargetDocumentHeight",
+  "TargetDocumentTopMargin",
+  "TargetDocumentBottomMargin",
+  "TargetDocumentLeftMargin",
+  "TargetDocumentRightMargin",
+  "SimplifyFonts",
+  "WrapText",
+  "HandleWideTables",
+  "HandleWideFooters",
+  "AddPageNumbers",
+  "PageFormatText",
+  "PageNumberFontSize",
+  "PageNumberOffsetX",
+  "PageNumberOffsetY"
+})
 @SuppressWarnings("PMD.BeanMembersShouldSerialize")
-public class HTMLConverter extends AppianSmartService {
-  private static final Logger LOG = Logger.getLogger(HTMLConverter.class);
-
+public class HTMLConverter extends BaseSmartService {
+  private static final org.apache.log4j.Logger LOG = org.apache.log4j.Logger.getLogger(HTMLConverter.class);
   // Inputs
   private Long sourceDocument;
+  // Target Inputs
   private String targetDocumentName;
   private String targetDocumentDesc;
-  private Long targetFolderPicker;
+  private Long targetFolder;
   private Integer targetDocumentWidth;
   private Integer targetDocumentHeight;
   private Integer targetDocumentTopMargin;
   private Integer targetDocumentBottomMargin;
   private Integer targetDocumentLeftMargin;
   private Integer targetDocumentRightMargin;
+  // Formatting Option Inputs
   private boolean simplifyFonts;
   private boolean wrapText;
   private boolean handleWideTables;
   private boolean handleWideFooters;
+  // Page Numbering Inputs
+  private Boolean addPageNumbers;
+  private String pageFormatText;
+  private Integer pageNumberFontSize;
+  private Integer pageNumberOffsetX;
+  private Integer pageNumberOffsetY;
 
   // Outputs
   private Long targetDocumentCreated;
-  private boolean errorOccurred;
-  private String errorMessage;
 
-  // Internal
-  private ContentService cs;
   // private static final Float ONE_MM_IN_PX = 3.7795275591F;
   private static final String DEFAULT_WIDTH = "210";
   private static final String DEFAULT_HEIGHT = "297";
@@ -62,9 +79,15 @@ public class HTMLConverter extends AppianSmartService {
   private static final String DEFAULT_WRAP_TEXT = "true";
   private static final String DEFAULT_WIDE_FOOTER = "true";
   private static final String DEFAULT_WIDE_TABLE = "true";
+  private static final String DEFAULT_ADD_PAGE_NUMBERS = "false";
+  private static final String DEFAULT_PAGE_FORMAT_TEXT = "Page {current} of {total}";
+  private static final String DEFAULT_PAGE_NUMBER_FONT_SIZE = "10";
+  private static final String DEFAULT_PAGE_NUMBER_OFFSET_X = "20";
+  private static final String DEFAULT_PAGE_NUMBER_OFFSET_Y = "20";
+
   private static final String NAME_TARGET_WIDTH = "TargetDocumentWidth";
   private static final String NAME_TARGET_HEIGHT = "TargetDocumentHeight";
-  private static final String NAME_TARGET_FOLDER_PICKER = "TargetFolderPicker";
+  private static final String NAME_TARGET_FOLDER = "TargetFolder";
   private static final String NAME_SOURCE_DOCUMENT = "SourceDocument";
   private static final String NAME_TARGET_DOCUMENT_NAME = "TargetDocumentName";
   private static final String NAME_TARGET_DOCUMENT_DESC = "TargetDocumentDesc";
@@ -72,10 +95,19 @@ public class HTMLConverter extends AppianSmartService {
   private static final String NAME_TARGET_DOCUMENT_BOTTOM_MARGIN = "TargetDocumentBottomMargin";
   private static final String NAME_TARGET_DOCUMENT_LEFT_MARGIN = "TargetDocumentLeftMargin";
   private static final String NAME_TARGET_DOCUMENT_RIGHT_MARGIN = "TargetDocumentRightMargin";
+  private static final String NAME_SIMPLIFY_FONTS = "SimplifyFonts";
+  private static final String NAME_WRAP_TEXT = "WrapText";
+  private static final String NAME_HANDLE_WIDE_TABLES = "HandleWideTables";
+  private static final String NAME_HANDLE_WIDE_FOOTERS = "HandleWideFooters";
+  private static final String NAME_NEW_DOCUMENT_CREATED = "NewDocumentCreated";
+  private static final String NAME_ADD_PAGE_NUMBERS = "AddPageNumbers";
+  private static final String NAME_PAGE_FORMAT_TEXT = "PageFormatText";
+  private static final String NAME_PAGE_NUMBER_FONT_SIZE = "PageNumberFontSize";
+  private static final String NAME_PAGE_NUMBER_OFFSET_X = "PageNumberOffsetX";
+  private static final String NAME_PAGE_NUMBER_OFFSET_Y = "PageNumberOffsetY";
 
   public HTMLConverter(ContentService cs) {
-    super();
-    this.cs = cs;
+    super(cs, LOG);
   }
 
   @Override
@@ -83,7 +115,7 @@ public class HTMLConverter extends AppianSmartService {
     Document validSourceDoc;
     try {
       ParameterValidation.checkNotNullOrBlank(targetDocumentName, "TargetDocumentName");
-      ParameterValidation.checkIsPositive(targetFolderPicker, "TargetFolder");
+      ParameterValidation.checkIsPositive(targetFolder, "TargetFolder");
       ParameterValidation.checkInRange(targetDocumentWidth, 1, 850, "TargetDocumentWidth");
       ParameterValidation.checkInRange(targetDocumentHeight, 1, 850, "TargetDocumentHeight");
       ParameterValidation.checkInRange(targetDocumentTopMargin, 1, 150, "TargetDocumentTopMargin");
@@ -91,46 +123,62 @@ public class HTMLConverter extends AppianSmartService {
       ParameterValidation.checkInRange(targetDocumentLeftMargin, 1, 150, "TargetDocumentLeftMargin");
       ParameterValidation.checkInRange(targetDocumentRightMargin, 1, 150, "TargetDocumentRightMargin");
 
+      if (addPageNumbers != null && addPageNumbers) {
+        ParameterValidation.checkNotNullOrBlank(pageFormatText, "PageFormatText");
+        ParameterValidation.checkInRange(pageNumberFontSize, 6, 16, "PageNumberFontSize");
+        ParameterValidation.checkInRange(pageNumberOffsetX, 0, 1000, "PageNumberOffsetX");
+        ParameterValidation.checkInRange(pageNumberOffsetY, 0, 1000, "PageNumberOffsetY");
+      }
+
       validSourceDoc = ParameterValidation.validateAndGetDocument(sourceDocument, cs, "html", "SourceDocument");
 
       ConversionRequest request = new ConversionRequest();
+      // Service
+      request.cs = super.cs;
 
-      request.cs = this.cs;
-      request.sourceDocument = this.sourceDocument;
-      request.targetDocumentBottomMargin = this.targetDocumentBottomMargin;
-      request.targetDocumentTopMargin = this.targetDocumentTopMargin;
-      request.targetDocumentLeftMargin = this.targetDocumentLeftMargin;
-      request.targetDocumentRightMargin = this.targetDocumentRightMargin;
-      request.targetDocumentDesc = this.targetDocumentDesc;
-      request.targetDocumentWidth = this.targetDocumentWidth;
-      request.targetDocumentHeight = this.targetDocumentHeight;
-      request.targetFolder = this.targetFolderPicker;
-      request.targetDocumentName = this.targetDocumentName;
-      request.simplifyFonts = this.simplifyFonts;
-      request.wrapText = this.wrapText;
-      request.handleWideFooters = this.handleWideFooters;
-      request.handleWideTables = this.handleWideTables;
+      // Source & Target
+      request.sourceDocument = sourceDocument;
+      request.targetFolder = targetFolder;
+      request.targetDocumentName = targetDocumentName;
+      request.targetDocumentDesc = targetDocumentDesc;
 
-      if (LOG.isEnabledFor(Level.INFO)) {
+      // Page dimensions
+      request.targetDocumentBottomMargin = targetDocumentBottomMargin;
+      request.targetDocumentTopMargin = targetDocumentTopMargin;
+      request.targetDocumentLeftMargin = targetDocumentLeftMargin;
+      request.targetDocumentRightMargin = targetDocumentRightMargin;
+      request.targetDocumentWidth = targetDocumentWidth;
+      request.targetDocumentHeight = targetDocumentHeight;
+
+      // Formatting options
+      request.simplifyFonts = simplifyFonts;
+      request.wrapText = wrapText;
+      request.handleWideFooters = handleWideFooters;
+      request.handleWideTables = handleWideTables;
+
+      // Page numbering
+      request.addPageNumbers = addPageNumbers != null ? this.addPageNumbers : false;
+      request.pageFormatText = pageFormatText != null ? this.pageFormatText : DEFAULT_PAGE_FORMAT_TEXT;
+      request.pageNumberFontSize = pageNumberFontSize != null ? this.pageNumberFontSize : Integer.parseInt(DEFAULT_PAGE_NUMBER_FONT_SIZE);
+      request.pageNumberOffsetX = pageNumberOffsetX != null ? this.pageNumberOffsetX : Integer.parseInt(DEFAULT_PAGE_NUMBER_OFFSET_X);
+      request.pageNumberOffsetY = pageNumberOffsetY != null ? this.pageNumberOffsetY : Integer.parseInt(DEFAULT_PAGE_NUMBER_OFFSET_Y);
+
+      if (LOG.isInfoEnabled()) {
         LOG.info("All parameters and content validated. Starting conversion for document: " + validSourceDoc.getExternalFilename());
       }
-      HtmlToPdfConverter converter = new HtmlToPdfConverter(request);
-      converter.executeConversion();
 
+      HtmlToPdfConverter converter = new HtmlToPdfConverter(request);
+      this.targetDocumentCreated = converter.executeConversion();
+
+      if (this.targetDocumentCreated == null) {
+        throw new IllegalStateException("PDF conversion completed but document ID was not created");
+      }
+    } catch (IllegalStateException e) {
+      handleException(e, "Document creation failed in HTMLConverter");
     } catch (IllegalArgumentException e) {
-      // Any validation failure from our utility class is caught here.
-      if (LOG.isEnabledFor(Level.ERROR)) {
-        LOG.error("Validation failed for HTMLConverter: " + e.getMessage());
-      }
-      this.errorOccurred = true;
-      this.errorMessage = e.getMessage(); // Use the clear, user-friendly message.
+      handleException(e, "Validation failed for HTMLConverter");
     } catch (Exception e) {
-      // Catch any other unexpected errors during processing.
-      if (LOG.isEnabledFor(Level.ERROR)) {
-        LOG.error("An unexpected error occurred in HTMLConverter.", e);
-      }
-      this.errorOccurred = true;
-      this.errorMessage = "An unexpected error occurred: " + e.getMessage();
+      handleException(e, "An unexpected error occurred in HTMLConverter.");
     }
   }
 
@@ -155,9 +203,9 @@ public class HTMLConverter extends AppianSmartService {
 
   @Input(required = Required.ALWAYS)
   @FolderDataType
-  @Name(NAME_TARGET_FOLDER_PICKER)
-  public void setTargetFolderPicker(Long folder) {
-    this.targetFolderPicker = folder;
+  @Name(NAME_TARGET_FOLDER)
+  public void setTargetFolder(Long folder) {
+    this.targetFolder = folder;
   }
 
   @Input(required = Required.ALWAYS, defaultValue = DEFAULT_WIDTH)
@@ -197,42 +245,63 @@ public class HTMLConverter extends AppianSmartService {
   }
 
   @Input(required = Required.ALWAYS, defaultValue = DEFAULT_SIMPLIFY_FONTS)
-  @Name("SimplifyFonts")
+  @Name(NAME_SIMPLIFY_FONTS)
   public void setSimplifyFonts(Boolean simplify) {
     this.simplifyFonts = simplify;
   }
 
   @Input(required = Required.ALWAYS, defaultValue = DEFAULT_WRAP_TEXT)
-  @Name("WrapText")
+  @Name(NAME_WRAP_TEXT)
   public void setWrapText(Boolean wrap) {
     this.wrapText = wrap;
   }
 
   @Input(required = Required.OPTIONAL, defaultValue = DEFAULT_WIDE_TABLE)
-  @Name("WideTable")
+  @Name(NAME_HANDLE_WIDE_TABLES)
   public void setWideTable(Boolean wideTable) {
     this.handleWideTables = wideTable;
   }
 
   @Input(required = Required.OPTIONAL, defaultValue = DEFAULT_WIDE_FOOTER)
-  @Name("WideFooter")
+  @Name(NAME_HANDLE_WIDE_FOOTERS)
   public void setWideFooter(Boolean wideFooter) {
     this.handleWideFooters = wideFooter;
   }
 
-  @Name("NewDocumentCreated")
+  @Input(required = Required.OPTIONAL, defaultValue = DEFAULT_ADD_PAGE_NUMBERS)
+  @Name(NAME_ADD_PAGE_NUMBERS)
+  public void setAddPageNumbers(Boolean addPageNumbers) {
+    this.addPageNumbers = addPageNumbers;
+  }
+
+  @Input(required = Required.OPTIONAL, defaultValue = DEFAULT_PAGE_FORMAT_TEXT)
+  @Name(NAME_PAGE_FORMAT_TEXT)
+  public void setPageFormatText(String pageFormatText) {
+    this.pageFormatText = pageFormatText;
+  }
+
+  @Input(required = Required.OPTIONAL, defaultValue = DEFAULT_PAGE_NUMBER_FONT_SIZE)
+  @Name(NAME_PAGE_NUMBER_FONT_SIZE)
+  public void setPageNumberFontSize(Integer pageNumberFontSize) {
+    this.pageNumberFontSize = pageNumberFontSize;
+  }
+
+  @Input(required = Required.OPTIONAL, defaultValue = DEFAULT_PAGE_NUMBER_OFFSET_X)
+  @Name(NAME_PAGE_NUMBER_OFFSET_X)
+  public void setPageNumberOffsetX(Integer pageNumberOffsetX) {
+    this.pageNumberOffsetX = pageNumberOffsetX;
+  }
+
+  @Input(required = Required.OPTIONAL, defaultValue = DEFAULT_PAGE_NUMBER_OFFSET_Y)
+  @Name(NAME_PAGE_NUMBER_OFFSET_Y)
+  public void setPageNumberOffsetY(Integer pageNumberOffsetY) {
+    this.pageNumberOffsetY = pageNumberOffsetY;
+  }
+
+  @Name(NAME_NEW_DOCUMENT_CREATED)
   @DocumentDataType
   public Long getNewDocumentCreated() {
     return targetDocumentCreated;
   }
 
-  @Name("errorOccurred")
-  public boolean getErrorOccurred() {
-    return errorOccurred;
-  }
-
-  @Name("errorMessage")
-  public String getErrorMessage() {
-    return errorMessage;
-  }
 }
