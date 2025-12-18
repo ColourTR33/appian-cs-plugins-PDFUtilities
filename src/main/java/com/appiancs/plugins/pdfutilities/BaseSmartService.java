@@ -6,20 +6,13 @@ import org.apache.log4j.Logger;
 
 import com.appiancorp.suiteapi.common.Name;
 import com.appiancorp.suiteapi.content.ContentService;
-import com.appiancorp.suiteapi.process.exceptions.SmartServiceException;
 import com.appiancorp.suiteapi.process.framework.AppianSmartService;
-
-/**
- * An abstract base class for all smart services in this plugin.
- * It centralises common functionality, such as error handling,
- * and standard output parameters (errorOccurred, errorMessage).
- */
+import com.appiancs.plugins.pdfutilities.dto.ConversionResult;
 
 public abstract class BaseSmartService extends AppianSmartService {
 
-  // These outputs are common to all smart services
-  protected boolean errorOccurred;
-  protected String errorMessage;
+  protected boolean errorOccurred = false;
+  protected String errorMessage = "";
 
   protected final transient ContentService cs;
   private final Logger log;
@@ -31,30 +24,38 @@ public abstract class BaseSmartService extends AppianSmartService {
   }
 
   /**
-   * A centralised method to handle exceptions, log them,
-   * and set the standard error output process variables.
-   *
-   * @param e
-   *          The exception that was caught.
-   * @param userFriendlyMessage
-   *          A clear message to be returned to the process.
-   * @throws SmartServiceException
-   *           Throws the configured exception to stop the node.
+   * Processes a standard ConversionResult object.
+   * If the result indicates failure, it logs the error and sets the output flags.
    */
+  protected void handleResult(ConversionResult result) {
+    if (result == null) {
+      handleError(new IllegalStateException("Result object was null."), "Service returned no result.");
+      return;
+    }
 
-  protected void handleException(Exception e, String userFriendlyMessage) throws SmartServiceException {
-    log.error(userFriendlyMessage, e);
-    this.errorOccurred = true;
-    this.errorMessage = userFriendlyMessage;
-    throw new SmartServiceException.Builder(getClass(), e).userMessage(userFriendlyMessage).build();
+    if (result.isSuccess()) {
+      this.errorOccurred = false;
+      this.errorMessage = null;
+    } else {
+      log.warn("Smart Service Failure: " + result.getErrorMessage());
+      this.errorOccurred = true;
+      this.errorMessage = result.getErrorMessage();
+    }
   }
 
-  @Name("errorOccurred")
+  protected void handleError(Exception e, String contextMessage) {
+    String finalMsg = contextMessage + ": " + e.getMessage();
+    log.error(finalMsg, e);
+    this.errorOccurred = true;
+    this.errorMessage = finalMsg;
+  }
+
+  @Name("ErrorOccurred")
   public boolean isErrorOccurred() {
     return errorOccurred;
   }
 
-  @Name("errorMessage")
+  @Name("ErrorMessage")
   public String getErrorMessage() {
     return errorMessage;
   }

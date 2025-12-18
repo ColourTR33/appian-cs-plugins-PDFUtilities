@@ -12,6 +12,7 @@ import com.appiancorp.suiteapi.process.framework.Required;
 import com.appiancorp.suiteapi.process.framework.Unattended;
 import com.appiancorp.suiteapi.process.palette.AutomationSmartServicesDocumentGeneration;
 import com.appiancs.plugins.pdfutilities.dto.ConversionRequest;
+import com.appiancs.plugins.pdfutilities.dto.ConversionResult;
 import com.appiancs.plugins.pdfutilities.service.HtmlToPdfConverter;
 import com.appiancs.plugins.pdfutilities.util.ParameterValidation;
 
@@ -41,6 +42,7 @@ import com.appiancs.plugins.pdfutilities.util.ParameterValidation;
 @SuppressWarnings("PMD.BeanMembersShouldSerialize")
 public class HTMLConverter extends BaseSmartService {
   private static final org.apache.log4j.Logger LOG = org.apache.log4j.Logger.getLogger(HTMLConverter.class);
+
   // Inputs
   private Long sourceDocument;
   // Target Inputs
@@ -58,12 +60,16 @@ public class HTMLConverter extends BaseSmartService {
   private boolean wrapText;
   private boolean handleWideTables;
   private boolean handleWideFooters;
+
   // Page Numbering Inputs
   private Boolean addPageNumbers;
   private String pageFormatText;
   private Integer pageNumberFontSize;
   private Integer pageNumberOffsetX;
   private Integer pageNumberOffsetY;
+
+  // Exception Management
+  private Long timeout;
 
   // Outputs
   private Long targetDocumentCreated;
@@ -105,6 +111,7 @@ public class HTMLConverter extends BaseSmartService {
   private static final String NAME_PAGE_NUMBER_FONT_SIZE = "PageNumberFontSize";
   private static final String NAME_PAGE_NUMBER_OFFSET_X = "PageNumberOffsetX";
   private static final String NAME_PAGE_NUMBER_OFFSET_Y = "PageNumberOffsetY";
+  private static final long DEFAULT_TIMEOUT = 120000;
 
   public HTMLConverter(ContentService cs) {
     super(cs, LOG);
@@ -163,22 +170,29 @@ public class HTMLConverter extends BaseSmartService {
       request.pageNumberOffsetX = pageNumberOffsetX != null ? this.pageNumberOffsetX : Integer.parseInt(DEFAULT_PAGE_NUMBER_OFFSET_X);
       request.pageNumberOffsetY = pageNumberOffsetY != null ? this.pageNumberOffsetY : Integer.parseInt(DEFAULT_PAGE_NUMBER_OFFSET_Y);
 
+      // Exception management
+      request.timeout = DEFAULT_TIMEOUT;
       if (LOG.isInfoEnabled()) {
         LOG.info("All parameters and content validated. Starting conversion for document: " + validSourceDoc.getExternalFilename());
       }
 
       HtmlToPdfConverter converter = new HtmlToPdfConverter(request);
-      this.targetDocumentCreated = converter.executeConversion();
 
-      if (this.targetDocumentCreated == null) {
-        throw new IllegalStateException("PDF conversion completed but document ID was not created");
+      ConversionResult result = converter.executeConversion();
+
+      super.handleResult(result);
+
+      if (result.isSuccess() && this.targetDocumentCreated == null) {
+        // Only throw exception if we THOUGHT we succeeded but didn't get an ID
+        throw new IllegalStateException("PDF conversion reported success but document ID is missing.");
       }
+
     } catch (IllegalStateException e) {
-      handleException(e, "Document creation failed in HTMLConverter");
+      super.handleError(e, "Document creation failed in HTMLConverter");
     } catch (IllegalArgumentException e) {
-      handleException(e, "Validation failed for HTMLConverter");
+      super.handleError(e, "Validation failed for HTMLConverter");
     } catch (Exception e) {
-      handleException(e, "An unexpected error occurred in HTMLConverter.");
+      super.handleError(e, "An unexpected error occurred in HTMLConverter.");
     }
   }
 
