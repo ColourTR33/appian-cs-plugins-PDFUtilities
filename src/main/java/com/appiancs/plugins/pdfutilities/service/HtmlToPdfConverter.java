@@ -10,6 +10,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 
 import org.apache.commons.io.FileUtils;
@@ -25,6 +31,7 @@ import org.w3c.dom.Document;
 
 import com.appiancorp.suiteapi.content.ContentConstants;
 import com.appiancs.plugins.pdfutilities.dto.ConversionRequest;
+import com.appiancs.plugins.pdfutilities.dto.ConversionResult;
 import com.appiancs.plugins.pdfutilities.util.ParameterValidation;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import com.openhtmltopdf.util.XRLog;
@@ -47,15 +54,18 @@ public class HtmlToPdfConverter {
   /**
    * Orchestrates the entire HTML to PDF conversion process.
    */
-  public Long executeConversion() {
+  public ConversionResult executeConversion() {
     File tempPdfFile = null;
+    ExecutorService executor = null;
 
     try {
       // Step 1: Prepare the HTML DOM (parsing, cleaning, styling)
       tempPdfFile = File.createTempFile("temp_pdf_" + request.sourceDocument, ".pdf");
+
       if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
         LOG.info("Temporary PDF file created: " + tempPdfFile.getAbsolutePath());
       }
+
       org.jsoup.nodes.Document preparedHtml = prepareHtmlDom();
 
       // Step 2: Load custom fonts (only if needed)
@@ -65,7 +75,45 @@ public class HtmlToPdfConverter {
       }
 
       // Step 3: Generate the PDF from the prepared HTML
-      generatePdf(preparedHtml, fontDataList, tempPdfFile);
+
+      executor = Executors.newSingleThreadExecutor();
+
+      final File finalTempFile = tempPdfFile;
+      final org.jsoup.nodes.Document finalHtml = preparedHtml;
+      final List<FontData> finalFonts = fontDataList;
+
+      Future<?> future = executor.submit(() -> {
+        try {
+          generatePdf(finalHtml, finalFonts, finalTempFile); // Assuming this method exists
+          return null;
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      });
+
+      try {
+        // Use the timeout provided in request, defaulting to 60 seconds if null
+        long limit = (request.timeout != null && request.timeout > 0) ? request.timeout : 120000L;
+
+        future.get(limit, TimeUnit.MILLISECONDS);
+
+      } catch (TimeoutException e) {
+        // CRITICAL: The PDF engine hung. Kill the task immediately.
+        future.cancel(true);
+        String msg = "TIMEOUT ERROR: PDF Generation timed out after " + request.timeout +
+          "ms. The HTML structure may be too complex (nested tables, infinite loops).";
+        LOG.error(msg);
+        return new ConversionResult(msg);
+      } catch (ExecutionException e) {
+        String msg = "RENDERING ERROR: " + e.getCause().getMessage();
+        LOG.error(msg, e);
+        return new ConversionResult(msg);
+      } catch (InterruptedException e) {
+        String msg = "INTERRUPT ERROR: The conversion process was interrupted.";
+        LOG.error(msg, e);
+        Thread.currentThread().interrupt(); // Restore the interrupt status
+        return new ConversionResult(msg);
+      }
 
       // Step 4: Post-process the PDF (e.g., add page numbers)
       addPageNumbers(tempPdfFile);
@@ -74,12 +122,15 @@ public class HtmlToPdfConverter {
       uploadPdfToAppian(tempPdfFile);
 
       // Return the newly created document ID
-      return request.newDocumentCreated;
+      return new ConversionResult(request.newDocumentCreated);
 
     } catch (Exception e) {
-      throw new RuntimeException("Failed to convert HTML to PDF: " + e.getMessage(), e);
+      LOG.error("Unexpected Error", e);
+      return new ConversionResult("System Error: " + e.getMessage());
     } finally {
-      // Step 6: Clean up temporary files
+      if (executor != null) {
+        executor.shutdownNow();
+      }
       FileUtils.deleteQuietly(tempPdfFile);
       if (LOG.isEnabledFor(org.apache.log4j.Level.INFO)) {
         LOG.info("Temporary PDF file cleanup executed.");

@@ -77,6 +77,8 @@ public class ConversionRequest {
   /** If true, applies CSS to help wide footers wrap within the page. */
   public boolean handleWideFooters;
 
+  public Long timeout;
+
   // Output Field
   public Long newDocumentCreated;
 }

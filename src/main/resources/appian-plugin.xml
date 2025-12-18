@@ -2,7 +2,7 @@
   <plugin-info>
     <description>PDF conversion utilities</description>
     <vendor name="Appian Corporation" url="https://www.appian.com" />
-    <version>1.0.10</version>
+    <version>1.0.12</version>
     <application-version min="25.2" />
     <resource-bundle base-name="com.appiancs.plugins.pdfutilities.HTMLConverter" />
   </plugin-info>
